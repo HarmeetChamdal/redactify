@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redactify — PII Redaction</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  textarea { width: 100%; min-height: 110px; font: inherit; padding: .5rem; box-sizing: border-box; }
+  button { padding: .5rem 1rem; font: inherit; cursor: pointer; margin-top: .5rem; }
+  pre { background: #f4f4f4; padding: 1rem; white-space: pre-wrap; word-wrap: break-word; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { border: 1px solid #ccc; padding: .4rem .6rem; text-align: left; font-size: .9rem; }
+  .muted { color: #666; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Redactify</h1>
+<p class="muted">Regex + spaCy NER PII redaction. Behaviour is config-driven (see <code>config.json</code>). Raw PII is never stored in the audit log — only entity type and count.</p>
+
+<label for="input">Text to redact</label>
+<textarea id="input">Hi, I'm Harmeet Singh Chamdal. Reach me at harmeetchamdal@gmail.com or (713) 597-9425.</textarea>
+<br>
+<label for="behaviour">Behaviour override</label>
+<select id="behaviour">
+  <option value="">Config default</option>
+  <option value="redact">redact</option>
+  <option value="replace">replace</option>
+  <option value="mask">mask</option>
+  <option value="hash">hash</option>
+  <option value="partial_mask">partial_mask</option>
+</select>
+<button id="go">Redact</button>
+<button id="refresh-audit">Refresh audit log</button>
+
+<h2>Redacted output</h2>
+<pre id="output">(nothing yet)</pre>
+<p id="summary" class="muted"></p>
+
+<h2>Audit log</h2>
+<table>
+  <thead><tr><th>ID</th><th>Timestamp (UTC)</th><th>Entity type</th><th>Count</th><th>Behaviour</th></tr></thead>
+  <tbody id="audit-body"><tr><td colspan="5">—</td></tr></tbody>
+</table>
+
+<script>
+async function loadAudit() {
+  const res = await fetch('/audit?limit=50');
+  const data = await res.json();
+  const body = document.getElementById('audit-body');
+  body.innerHTML = data.entries.length
+    ? data.entries.map(e => `<tr><td>${e.id}</td><td>${e.timestamp}</td><td>${e.entity_type}</td><td>${e.count}</td><td>${e.behaviour}</td></tr>`).join('')
+    : '<tr><td colspan="5">No entries yet.</td></tr>';
+}
+document.getElementById('go').addEventListener('click', async () => {
+  const behaviour = document.getElementById('behaviour').value || null;
+  const res = await fetch('/redact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: document.getElementById('input').value, behaviour }),
+  });
+  const data = await res.json();
+  document.getElementById('output').textContent = data.redacted_text;
+  document.getElementById('summary').textContent =
+    `Redactions: ${data.redactions.map(r => `${r.entity_type} x${r.count} (${r.behaviour})`).join(', ') || 'none'} | NER available: ${data.ner_available} | Audit logged: ${data.audit_logged}`;
+  loadAudit();
+});
+document.getElementById('refresh-audit').addEventListener('click', loadAudit);
+loadAudit();
+</script>
+</body>
+</html>
